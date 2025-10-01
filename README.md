@@ -1,4 +1,13 @@
-# Portable File Dialogs
+# Portable File Dialogs Mod
+
+What's different?
+- Changed notify to use custom icons rather than builtins
+- Removed message functionality (it isn't needed for what this mod is used for)
+
+What's this for?
+- This is a modification specialized for the RenWeb project. 
+
+# Original README
 
 A free C++11 file dialog library.
 
