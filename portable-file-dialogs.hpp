@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <stdexcept>
 #if _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #   define WIN32_LEAN_AND_MEAN 1
@@ -37,6 +38,11 @@
 #       define _DARWIN_C_SOURCE
 #   endif
 #endif
+
+// #ifdef __unix__
+// #include <libnotify/notify.h>
+// #endif
+
 #include <cstdio>     // popen()
 #include <cstdlib>    // std::getenv()
 #include <fcntl.h>    // fcntl()
@@ -91,13 +97,7 @@ enum class choice
     abort_retry_ignore,
 };
 
-enum class icon
-{
-    info = 0,
-    warning,
-    error,
-    question,
-};
+// CHANGE: deleted icon class
 
 // Additional option flags for various dialog constructors
 enum class opt : uint8_t
@@ -273,7 +273,7 @@ protected:
 
     std::vector<std::string> desktop_helper() const;
     static std::string buttons_to_name(choice _choice);
-    static std::string get_icon_name(icon _icon);
+    // static std::string get_icon_name(icon _icon);
 
     std::string powershell_quote(std::string const &str) const;
     std::string osascript_quote(std::string const &str) const;
@@ -338,27 +338,9 @@ class notify : public internal::dialog
 public:
     notify(std::string const &title,
            std::string const &message,
-           icon _icon = icon::info);
+           std::string const &icon_path);
 };
 
-//
-// The message widget
-//
-
-class message : public internal::dialog
-{
-public:
-    message(std::string const &title,
-            std::string const &text,
-            choice _choice = choice::ok_cancel,
-            icon _icon = icon::info);
-
-    button result();
-
-private:
-    // Some extra logic to map the exit code to button number
-    std::map<int, button> m_mappings;
-};
 
 //
 // The open_file, save_file, and open_folder widgets
@@ -1003,22 +985,22 @@ inline std::string internal::dialog::buttons_to_name(choice _choice)
     }
 }
 
-inline std::string internal::dialog::get_icon_name(icon _icon)
-{
-    switch (_icon)
-    {
-        case icon::warning: return "warning";
-        case icon::error: return "error";
-        case icon::question: return "question";
-        // Zenity wants "information" but WinForms wants "info"
-        /* case icon::info: */ default:
-#if _WIN32
-            return "info";
-#else
-            return "information";
-#endif
-    }
-}
+// inline std::string internal::dialog::get_icon_name(icon _icon)
+// {
+//     switch (_icon)
+//     {
+//         case icon::warning: return "warning";
+//         case icon::error: return "error";
+//         case icon::question: return "question";
+//         // Zenity wants "information" but WinForms wants "info"
+//         /* case icon::info: */ default:
+// #if _WIN32
+//             return "info";
+// #else
+//             return "information";
+// #endif
+//     }
+// }
 
 // This is only used for debugging purposes
 inline std::ostream& operator <<(std::ostream &s, std::vector<std::string> const &v)
@@ -1486,11 +1468,8 @@ inline std::string internal::file_dialog::select_folder_vista(IFileDialog *ifd, 
 
 inline notify::notify(std::string const &title,
                       std::string const &message,
-                      icon _icon /* = icon::info */)
+                      std::string const &icon)
 {
-    if (_icon == icon::question) // Not supported by notifications
-        _icon = icon::info;
-
 #if _WIN32
     // Use a static shared pointer for notify_icon so that we can delete
     // it whenever we need to display a new one, and we can also wait
@@ -1557,8 +1536,25 @@ inline notify::notify(std::string const &title,
     (void)title;
     (void)message;
 #else
-    auto command = desktop_helper();
 
+    // if (!notify_init("TEST")) {
+    //     throw std::runtime_error("Unable to send notification using libnotify");
+    // }
+    // NotifyNotification *n = notify_notification_new(title.c_str(), message.c_str(), nullptr);
+    // GError *pixbuf_error = nullptr;
+    // GdkPixbuf *pixbuf_icon = gdk_pixbuf_new_from_file(icon.c_str(), &pixbuf_error);
+    // if (!pixbuf_icon) {
+    //     g_printerr("Error loading icon: %s\n", pixbuf_error->message);
+    //     g_error_free(pixbuf_error);
+    // } else {
+    //     notify_notification_set_image_from_pixbuf(n, pixbuf_icon);
+    //     g_object_unref(pixbuf_icon);
+    // }
+    // notify_notification_show(n, nullptr);
+    // g_object_unref(G_OBJECT(n));
+    // notify_uninit();
+    // --------
+    auto command = desktop_helper();
     if (is_osascript())
     {
         command.push_back("-e");
@@ -1569,14 +1565,14 @@ inline notify::notify(std::string const &title,
     {
         command.push_back("--notification");
         command.push_back("--window-icon");
-        command.push_back(get_icon_name(_icon));
+        command.push_back(icon);
         command.push_back("--text");
         command.push_back(title + "\n" + message);
     }
     else if (is_kdialog())
     {
         command.push_back("--icon");
-        command.push_back(get_icon_name(_icon));
+        command.push_back(icon);
         command.push_back("--title");
         command.push_back(title);
         command.push_back("--passivepopup");
@@ -1589,235 +1585,6 @@ inline notify::notify(std::string const &title,
 
     m_async->start_process(command);
 #endif
-}
-
-// message implementation
-
-inline message::message(std::string const &title,
-                        std::string const &text,
-                        choice _choice /* = choice::ok_cancel */,
-                        icon _icon /* = icon::info */)
-{
-#if _WIN32
-    // Use MB_SYSTEMMODAL rather than MB_TOPMOST to ensure the message window is brought
-    // to front. See https://github.com/samhocevar/portable-file-dialogs/issues/52
-    UINT style = MB_SYSTEMMODAL;
-    switch (_icon)
-    {
-        case icon::warning: style |= MB_ICONWARNING; break;
-        case icon::error: style |= MB_ICONERROR; break;
-        case icon::question: style |= MB_ICONQUESTION; break;
-        /* case icon::info: */ default: style |= MB_ICONINFORMATION; break;
-    }
-
-    switch (_choice)
-    {
-        case choice::ok_cancel: style |= MB_OKCANCEL; break;
-        case choice::yes_no: style |= MB_YESNO; break;
-        case choice::yes_no_cancel: style |= MB_YESNOCANCEL; break;
-        case choice::retry_cancel: style |= MB_RETRYCANCEL; break;
-        case choice::abort_retry_ignore: style |= MB_ABORTRETRYIGNORE; break;
-        /* case choice::ok: */ default: style |= MB_OK; break;
-    }
-
-    m_mappings[IDCANCEL] = button::cancel;
-    m_mappings[IDOK] = button::ok;
-    m_mappings[IDYES] = button::yes;
-    m_mappings[IDNO] = button::no;
-    m_mappings[IDABORT] = button::abort;
-    m_mappings[IDRETRY] = button::retry;
-    m_mappings[IDIGNORE] = button::ignore;
-
-    m_async->start_func([text, title, style](int* exit_code) -> std::string
-    {
-        auto wtext = internal::str2wstr(text);
-        auto wtitle = internal::str2wstr(title);
-        // Apply new visual style (required for all Windows versions)
-        new_style_context ctx;
-        *exit_code = MessageBoxW(GetActiveWindow(), wtext.c_str(), wtitle.c_str(), style);
-        return "";
-    });
-
-#elif __EMSCRIPTEN__
-    std::string full_message;
-    switch (_icon)
-    {
-        case icon::warning: full_message = "⚠️"; break;
-        case icon::error: full_message = "⛔"; break;
-        case icon::question: full_message = "❓"; break;
-        /* case icon::info: */ default: full_message = "ℹ"; break;
-    }
-
-    full_message += ' ' + title + "\n\n" + text;
-
-    // This does not really start an async task; it just passes the
-    // EM_ASM_INT return value to a fake start() function.
-    m_async->start(EM_ASM_INT(
-    {
-        if ($1)
-            return window.confirm(UTF8ToString($0)) ? 0 : -1;
-        alert(UTF8ToString($0));
-        return 0;
-    }, full_message.c_str(), _choice == choice::ok_cancel));
-#else
-    auto command = desktop_helper();
-
-    if (is_osascript())
-    {
-        std::string script = "display dialog " + osascript_quote(text) +
-                             " with title " + osascript_quote(title);
-        auto if_cancel = button::cancel;
-        switch (_choice)
-        {
-            case choice::ok_cancel:
-                script += "buttons {\"OK\", \"Cancel\"}"
-                          " default button \"OK\""
-                          " cancel button \"Cancel\"";
-                break;
-            case choice::yes_no:
-                script += "buttons {\"Yes\", \"No\"}"
-                          " default button \"Yes\""
-                          " cancel button \"No\"";
-                if_cancel = button::no;
-                break;
-            case choice::yes_no_cancel:
-                script += "buttons {\"Yes\", \"No\", \"Cancel\"}"
-                          " default button \"Yes\""
-                          " cancel button \"Cancel\"";
-                break;
-            case choice::retry_cancel:
-                script += "buttons {\"Retry\", \"Cancel\"}"
-                          " default button \"Retry\""
-                          " cancel button \"Cancel\"";
-                break;
-            case choice::abort_retry_ignore:
-                script += "buttons {\"Abort\", \"Retry\", \"Ignore\"}"
-                          " default button \"Abort\""
-                          " cancel button \"Retry\"";
-                if_cancel = button::retry;
-                break;
-            case choice::ok: default:
-                script += "buttons {\"OK\"}"
-                          " default button \"OK\""
-                          " cancel button \"OK\"";
-                if_cancel = button::ok;
-                break;
-        }
-        m_mappings[1] = if_cancel;
-        m_mappings[256] = if_cancel; // XXX: I think this was never correct
-        script += " with icon ";
-        switch (_icon)
-        {
-            #define PFD_OSX_ICON(n) "alias ((path to library folder from system domain) as text " \
-                "& \"CoreServices:CoreTypes.bundle:Contents:Resources:" n ".icns\")"
-            case icon::info: default: script += PFD_OSX_ICON("ToolBarInfo"); break;
-            case icon::warning: script += "caution"; break;
-            case icon::error: script += "stop"; break;
-            case icon::question: script += PFD_OSX_ICON("GenericQuestionMarkIcon"); break;
-            #undef PFD_OSX_ICON
-        }
-
-        command.push_back("-e");
-        command.push_back(script);
-    }
-    else if (is_zenity())
-    {
-        switch (_choice)
-        {
-            case choice::ok_cancel:
-                command.insert(command.end(), { "--question", "--cancel-label=Cancel", "--ok-label=OK" }); break;
-            case choice::yes_no:
-                // Do not use standard --question because it causes “No” to return -1,
-                // which is inconsistent with the “Yes/No/Cancel” mode below.
-                command.insert(command.end(), { "--question", "--switch", "--extra-button=No", "--extra-button=Yes" }); break;
-            case choice::yes_no_cancel:
-                command.insert(command.end(), { "--question", "--switch", "--extra-button=Cancel", "--extra-button=No", "--extra-button=Yes" }); break;
-            case choice::retry_cancel:
-                command.insert(command.end(), { "--question", "--switch", "--extra-button=Cancel", "--extra-button=Retry" }); break;
-            case choice::abort_retry_ignore:
-                command.insert(command.end(), { "--question", "--switch", "--extra-button=Ignore", "--extra-button=Abort", "--extra-button=Retry" }); break;
-            case choice::ok:
-            default:
-                switch (_icon)
-                {
-                    case icon::error: command.push_back("--error"); break;
-                    case icon::warning: command.push_back("--warning"); break;
-                    default: command.push_back("--info"); break;
-                }
-        }
-
-        command.insert(command.end(), { "--title", title,
-                                        "--width=300", "--height=0", // sensible defaults
-                                        "--no-markup", // do not interpret text as Pango markup
-                                        "--text", text,
-                                        "--icon-name=dialog-" + get_icon_name(_icon) });
-    }
-    else if (is_kdialog())
-    {
-        if (_choice == choice::ok)
-        {
-            switch (_icon)
-            {
-                case icon::error: command.push_back("--error"); break;
-                case icon::warning: command.push_back("--sorry"); break;
-                default: command.push_back("--msgbox"); break;
-            }
-        }
-        else
-        {
-            std::string flag = "--";
-            if (_icon == icon::warning || _icon == icon::error)
-                flag += "warning";
-            flag += "yesno";
-            if (_choice == choice::yes_no_cancel)
-                flag += "cancel";
-            command.push_back(flag);
-            if (_choice == choice::yes_no || _choice == choice::yes_no_cancel)
-            {
-                m_mappings[0] = button::yes;
-                m_mappings[256] = button::no;
-            }
-        }
-
-        command.push_back(text);
-        command.push_back("--title");
-        command.push_back(title);
-
-        // Must be after the above part
-        if (_choice == choice::ok_cancel)
-            command.insert(command.end(), { "--yes-label", "OK", "--no-label", "Cancel" });
-    }
-
-    if (flags(flag::is_verbose))
-        std::cerr << "pfd: " << command << std::endl;
-
-    m_async->start_process(command);
-#endif
-}
-
-inline button message::result()
-{
-    int exit_code;
-    auto ret = m_async->result(&exit_code);
-    // osascript will say "button returned:Cancel\n"
-    // and others will just say "Cancel\n"
-    if (internal::ends_with(ret, "Cancel\n"))
-        return button::cancel;
-    if (internal::ends_with(ret, "OK\n"))
-        return button::ok;
-    if (internal::ends_with(ret, "Yes\n"))
-        return button::yes;
-    if (internal::ends_with(ret, "No\n"))
-        return button::no;
-    if (internal::ends_with(ret, "Abort\n"))
-        return button::abort;
-    if (internal::ends_with(ret, "Retry\n"))
-        return button::retry;
-    if (internal::ends_with(ret, "Ignore\n"))
-        return button::ignore;
-    if (m_mappings.count(exit_code) != 0)
-        return m_mappings[exit_code];
-    return exit_code == 0 ? button::ok : button::cancel;
 }
 
 // open_file implementation
