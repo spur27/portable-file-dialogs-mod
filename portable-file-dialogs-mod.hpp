@@ -1509,11 +1509,6 @@ inline notify::notify(std::string const &title,
     // };
 
     nid->hIcon = (HICON)LoadImage(NULL, (LPCTSTR)icon.c_str(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
-    if (!nid->hIcon) {
-        LPCWSTR err_msg = (LPCWSTR)std::string("Failed to laod icon '" + icon + "'").c_str();
-        MessageBoxW(NULL, err_msg, L"Error", MB_ICONERROR);
-        return;
-    }
     // ::EnumResourceNames(nullptr, RT_GROUP_ICON, icon_enum_callback, (LONG_PTR)nid.get());
 
     nid->uTimeout = 5000;
