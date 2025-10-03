@@ -1489,9 +1489,8 @@ inline notify::notify(std::string const &title,
 
     // For XP support
     nid->cbSize = NOTIFYICONDATAW_V2_SIZE;
-    nid->hWnd = nullptr;
+    nid->hWnd = GetActiveWindow();
     nid->uID = 0;
-
     // Flag Description:
     // - NIF_ICON    The hIcon member is valid.
     // - NIF_MESSAGE The uCallbackMessage member is valid.
@@ -1500,29 +1499,22 @@ inline notify::notify(std::string const &title,
     // - NIF_INFO    Use a balloon ToolTip instead of a standard ToolTip. The szInfo, uTimeout, szInfoTitle, and dwInfoFlags members are valid.
     // - NIF_GUID    Reserved.
     nid->uFlags = NIF_MESSAGE | NIF_ICON | NIF_INFO;
+    nid->dwInfoFlags = NIIF_USER;
 
-    // Flag Description
-    // - NIIF_ERROR     An error icon.
-    // - NIIF_INFO      An information icon.
-    // - NIIF_NONE      No icon.
-    // - NIIF_WARNING   A warning icon.
-    // - NIIF_ICON_MASK Version 6.0. Reserved.
-    // - NIIF_NOSOUND   Version 6.0. Do not play the associated sound. Applies only to balloon ToolTips
-    switch (_icon)
-    {
-        case icon::warning: nid->dwInfoFlags = NIIF_WARNING; break;
-        case icon::error: nid->dwInfoFlags = NIIF_ERROR; break;
-        /* case icon::info: */ default: nid->dwInfoFlags = NIIF_INFO; break;
+
+    // ENUMRESNAMEPROC icon_enum_callback = [](HMODULE, LPCTSTR, LPTSTR lpName, LONG_PTR lParam) -> BOOL
+    // {
+    //     ((NOTIFYICONDATAW *)lParam)->hIcon = ::LoadIconW(GetModuleHandle(nullptr), lpName);
+    //     return false;
+    // };
+
+    nid->hIcon = (HICON)LoadImage(NULL, (LPCTSTR)icon.c_str(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
+    if (!nid->hIcon) {
+        LPCWSTR err_msg = (LPCWSTR)std::string("Failed to laod icon '" + icon + "'").c_str();
+        MessageBoxW(NULL, err_msg, L"Error", MB_ICONERROR);
+        return;
     }
-
-    ENUMRESNAMEPROC icon_enum_callback = [](HMODULE, LPCTSTR, LPTSTR lpName, LONG_PTR lParam) -> BOOL
-    {
-        ((NOTIFYICONDATAW *)lParam)->hIcon = ::LoadIcon(GetModuleHandle(nullptr), lpName);
-        return false;
-    };
-
-    nid->hIcon = ::LoadIcon(nullptr, IDI_APPLICATION);
-    ::EnumResourceNames(nullptr, RT_GROUP_ICON, icon_enum_callback, (LONG_PTR)nid.get());
+    // ::EnumResourceNames(nullptr, RT_GROUP_ICON, icon_enum_callback, (LONG_PTR)nid.get());
 
     nid->uTimeout = 5000;
 
